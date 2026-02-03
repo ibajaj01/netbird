@@ -29,71 +29,7 @@ management:
       - --dns-domain=netbird.redzapp.net
 
   ## Management ConfigMap - leave as placeholder
-  configmap: |-
-    {
-      "Stuns": [
-        {
-          "Proto": "udp",
-          "URI": "stun:stun.netbird.io:3478",
-          "Username": "",
-          "Password": null
-        }
-      ],
-      "TURNConfig": {
-        "Turns": [
-          {
-            "Proto": "udp",
-            "URI": "turn:turn.netbird.io:3478",
-            "Username": "self",
-            "Password": "self"
-          }
-        ],
-        "CredentialsTTL": "12h",
-        "Secret": "secret",
-        "TimeBasedCredentials": false
-      },
-      "Signal": {
-        "Proto": "https",
-        "URI": "netbird.redzapp.net:443",
-        "Username": "",
-        "Password": null
-      },
-      "Datadir": "/var/lib/netbird",
-      "DataStoreEncryptionKey": "",
-      "HttpConfig": {
-        "AuthIssuer": "",
-        "AuthAudience": "",
-        "AuthKeysLocation": "",
-        "OIDCConfigEndpoint": "",
-        "IdpSignKeyRefreshEnabled": false
-      },
-      "DeviceAuthorizationFlow": {
-        "Provider": "none",
-        "ProviderConfig": {
-          "Audience": "",
-          "ClientID": "",
-          "ClientSecret": "",
-          "TokenEndpoint": "",
-          "DeviceAuthEndpoint": "",
-          "AuthorizationEndpoint": "",
-          "Scope": "",
-          "UseIDToken": false,
-          "RedirectURLs": null
-        }
-      },
-      "PKCEAuthorizationFlow": {
-        "ProviderConfig": {
-          "Audience": "",
-          "ClientID": "",
-          "ClientSecret": "",
-          "TokenEndpoint": "",
-          "AuthorizationEndpoint": "",
-          "Scope": "",
-          "RedirectURLs": null,
-          "UseIDToken": false
-        }
-      }
-    }
+  configmap: ""
 
   lifecycle: {}
 
@@ -364,6 +300,8 @@ relay:
       value: "rels://netbird.redzapp.net:443"  # or use relay subdomain if you create one
     - name: NB_LISTEN_ADDRESS
       value: ":33080"
+    - name: NB_AUTH_SECRET
+      value: "9YsCwd83b9aGVqa/nmSrmFwT18sXEk/+cOSoFxotoX8="
 
   envFromSecret: {}
 
@@ -494,26 +432,6 @@ dashboard:
       cpu: 500m
       memory: 512Mi
 
-  ## Node selector
-  nodeSelector: {}
-
-  ## Tolerations
-  tolerations: []
-
-  ## Affinity
-  affinity:
-    podAntiAffinity:
-      preferredDuringSchedulingIgnoredDuringExecution:
-        - weight: 100
-          podAffinityTerm:
-            labelSelector:
-              matchExpressions:
-                - key: app.kubernetes.io/component
-                  operator: In
-                  values:
-                    - dashboard
-            topologyKey: kubernetes.io/hostname
-
   ## Environment variables for dashboard
   env: {}
 
@@ -607,15 +525,11 @@ extraManifests:
         cert-manager.io/cluster-issuer: "letsencrypt-prod"
         
         # NGINX specific annotations
-        nginx.ingress.kubernetes.io/ssl-redirect: "true"
-        nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+        nginx.ingress.kubernetes.io/ssl-redirect: "false"
+        nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
         nginx.ingress.kubernetes.io/proxy-body-size: "0"
         nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
         nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-        
-        # CORS if needed
-        nginx.ingress.kubernetes.io/enable-cors: "true"
-        nginx.ingress.kubernetes.io/cors-allow-origin: "https://netbird.redzapp.net"
     spec:
       ingressClassName: nginx
       tls:
@@ -745,54 +659,6 @@ extraManifests:
                 port:
                   number: 80
 
-  # Pod Disruption Budgets for High Availability
-  - apiVersion: policy/v1
-    kind: PodDisruptionBudget
-    metadata:
-      name: netbird-management-pdb
-      namespace: netbird
-    spec:
-      minAvailable: 1
-      selector:
-        matchLabels:
-          app.kubernetes.io/name: netbird
-          app.kubernetes.io/component: management
-
-  - apiVersion: policy/v1
-    kind: PodDisruptionBudget
-    metadata:
-      name: netbird-signal-pdb
-      namespace: netbird
-    spec:
-      minAvailable: 1
-      selector:
-        matchLabels:
-          app.kubernetes.io/name: netbird
-          app.kubernetes.io/component: signal
-
-  - apiVersion: policy/v1
-    kind: PodDisruptionBudget
-    metadata:
-      name: netbird-relay-pdb
-      namespace: netbird
-    spec:
-      minAvailable: 1
-      selector:
-        matchLabels:
-          app.kubernetes.io/name: netbird
-          app.kubernetes.io/component: relay
-
-  - apiVersion: policy/v1
-    kind: PodDisruptionBudget
-    metadata:
-      name: netbird-dashboard-pdb
-      namespace: netbird
-    spec:
-      minAvailable: 1
-      selector:
-        matchLabels:
-          app.kubernetes.io/name: netbird
-          app.kubernetes.io/component: dashboard
 
 ##############################################################################
 ## @section Prometheus Metrics
