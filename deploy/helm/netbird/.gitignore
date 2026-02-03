@@ -1,0 +1,19 @@
+# Helm generated files
+*.tgz
+*.lock
+
+# User-specific values files (may contain secrets)
+my-values.yaml
+*-local.yaml
+*-prod.yaml
+*-staging.yaml
+*-dev.yaml
+
+# Secret files
+secrets.yaml
+*-secrets.yaml
+
+# Temporary files
+*.tmp
+*.bak
+.DS_Store

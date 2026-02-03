@@ -1,0 +1,376 @@
+# NetBird Values for Azure Kubernetes Service (AKS) with Microsoft Entra Authentication
+# This file provides a ready-to-use configuration for deploying Netbird in AKS
+# Replace placeholder values marked with YOUR_* before deployment
+
+## Global Configuration
+global:
+  # Kubernetes namespace for Netbird components
+  namespace: "netbird"
+
+## Management Service Configuration
+management:
+  enabled: true
+  replicaCount: 2  # High availability
+
+  podCommand:
+    args:
+      - --port=80
+      - --log-file=console
+      - --log-level=info
+      - --disable-anonymous-metrics=false
+      # IMPORTANT: Replace with your domain
+      - --single-account-mode-domain=YOUR_DOMAIN.com
+      - --dns-domain=YOUR_DOMAIN.com
+
+  image:
+    repository: netbirdio/management
+    pullPolicy: IfNotPresent
+    tag: "0.64.1"  # Specify version for production
+
+  # Resource requests and limits for AKS
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Persistent volume using Azure Premium SSD
+  persistentVolume:
+    enabled: true
+    accessModes:
+      - ReadWriteOnce
+    size: 10Gi
+    # Use Azure Premium storage class for better performance
+    storageClass: "managed-premium"
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 80
+    annotations: {}
+
+  serviceGrpc:
+    type: ClusterIP
+    port: 33073
+    annotations: {}
+
+  # HTTP Ingress for Management API
+  ingress:
+    enabled: true
+    className: "nginx"  # Or "azure-application-gateway" for App Gateway
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    hosts:
+      - host: YOUR_DOMAIN.com  # Replace with your domain
+        paths:
+          - path: /api
+            pathType: Prefix
+          - path: /management.ManagementService
+            pathType: Prefix
+    tls:
+      - secretName: netbird-tls
+        hosts:
+          - YOUR_DOMAIN.com  # Replace with your domain
+
+  # gRPC Ingress for Management Service
+  ingressGrpc:
+    enabled: true
+    className: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+    hosts:
+      - host: YOUR_DOMAIN.com  # Replace with your domain
+        paths:
+          - path: /management.ManagementService
+            pathType: Prefix
+    tls:
+      - secretName: netbird-tls
+        hosts:
+          - YOUR_DOMAIN.com  # Replace with your domain
+
+  # Microsoft Entra (Azure AD) environment variables
+  envRaw:
+    # OIDC Configuration Endpoint for Microsoft Entra
+    - name: NETBIRD_AUTH_OIDC_CONFIGURATION_ENDPOINT
+      value: "https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0/.well-known/openid-configuration"
+    # Audience for JWT tokens (usually the client ID)
+    - name: NETBIRD_AUTH_AUDIENCE
+      value: "YOUR_CLIENT_ID"
+    # Client ID from Azure App Registration
+    - name: NETBIRD_AUTH_CLIENT_ID
+      valueFrom:
+        secretKeyRef:
+          name: netbird-auth-entra
+          key: client-id
+    # Client Secret from Azure App Registration
+    - name: NETBIRD_AUTH_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: netbird-auth-entra
+          key: client-secret
+    # Redirect URI - must match Azure App Registration configuration
+    - name: NETBIRD_AUTH_REDIRECT_URI
+      value: "https://YOUR_DOMAIN.com/auth/callback"
+    # Supported OIDC scopes
+    - name: NETBIRD_AUTH_SUPPORTED_SCOPES
+      value: "openid profile email offline_access"
+    # Device authorization endpoint (for device login flow)
+    - name: NETBIRD_AUTH_DEVICE_AUTH_ENDPOINT
+      value: "https://login.microsoftonline.com/YOUR_TENANT_ID/oauth2/v2.0/devicecode"
+    # Token endpoint
+    - name: NETBIRD_AUTH_TOKEN_ENDPOINT
+      value: "https://login.microsoftonline.com/YOUR_TENANT_ID/oauth2/v2.0/token"
+    # Authorization endpoint  
+    - name: NETBIRD_AUTH_AUTHORITY
+      value: "https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0"
+
+  serviceAccount:
+    create: true
+    annotations:
+      # Optional: For Azure Workload Identity integration
+      # azure.workload.identity/client-id: "YOUR_MANAGED_IDENTITY_CLIENT_ID"
+
+## Signal Service Configuration
+signal:
+  enabled: true
+  replicaCount: 2  # High availability
+  logLevel: info
+
+  image:
+    repository: netbirdio/signal
+    pullPolicy: IfNotPresent
+    tag: "0.64.1"
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  service:
+    type: ClusterIP
+    port: 80
+    annotations: {}
+
+  # Ingress for Signal service
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+    hosts:
+      - host: YOUR_DOMAIN.com  # Replace with your domain
+        paths:
+          - path: /signalexchange.SignalExchange
+            pathType: Prefix
+    tls:
+      - secretName: netbird-tls
+        hosts:
+          - YOUR_DOMAIN.com  # Replace with your domain
+
+  serviceAccount:
+    create: true
+
+## Relay Service Configuration (for NAT traversal)
+relay:
+  enabled: true
+  replicaCount: 2
+  logLevel: info
+
+  image:
+    repository: netbirdio/relay
+    pullPolicy: IfNotPresent
+    tag: "0.64.1"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  service:
+    type: LoadBalancer  # Requires public IP for TURN/STUN
+    port: 33080
+    annotations:
+      # Public load balancer for relay service
+      service.beta.kubernetes.io/azure-load-balancer-internal: "false"
+      # For internal load balancer, use:
+      # service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+      # service.beta.kubernetes.io/azure-load-balancer-internal-subnet: "YOUR_SUBNET_NAME"
+
+  # Ingress for Relay HTTP API
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    hosts:
+      - host: YOUR_DOMAIN.com  # Replace with your domain
+        paths:
+          - path: /relay
+            pathType: Prefix
+    tls:
+      - secretName: netbird-tls
+        hosts:
+          - YOUR_DOMAIN.com  # Replace with your domain
+
+  # Environment variables for relay configuration
+  envRaw:
+    # Relay authentication secret (should match management)
+    - name: NETBIRD_RELAY_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: netbird-relay-secret
+          key: relay-secret
+
+  serviceAccount:
+    create: true
+
+## Dashboard Service Configuration
+dashboard:
+  enabled: true
+  replicaCount: 2  # High availability
+
+  image:
+    repository: netbirdio/dashboard
+    pullPolicy: IfNotPresent
+    tag: "v2.13.1"
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  service:
+    type: ClusterIP
+    port: 80
+    annotations: {}
+
+  # Dashboard ingress (main entry point)
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    hosts:
+      - host: YOUR_DOMAIN.com  # Replace with your domain
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: netbird-tls
+        hosts:
+          - YOUR_DOMAIN.com  # Replace with your domain
+
+  # Dashboard environment variables for Entra authentication
+  envRaw:
+    # Management API endpoint
+    - name: NETBIRD_MGMT_API_ENDPOINT
+      value: "https://YOUR_DOMAIN.com"
+    # Management gRPC API endpoint
+    - name: NETBIRD_MGMT_GRPC_API_ENDPOINT
+      value: "https://YOUR_DOMAIN.com"
+    # Azure AD OAuth Authority URL
+    - name: AUTH_AUTHORITY
+      value: "https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0"
+    # Client ID for dashboard (same as management)
+    - name: AUTH_CLIENT_ID
+      value: "YOUR_CLIENT_ID"
+    # Redirect URI for OAuth callback
+    - name: AUTH_REDIRECT_URI
+      value: "https://YOUR_DOMAIN.com/auth/callback"
+    # JWT Audience
+    - name: AUTH_AUDIENCE
+      value: "YOUR_CLIENT_ID"
+    # Disable Auth0 (we're using Azure AD)
+    - name: USE_AUTH0
+      value: "false"
+    # Supported OAuth scopes
+    - name: AUTH_SUPPORTED_SCOPES
+      value: "openid profile email offline_access"
+
+  serviceAccount:
+    create: true
+
+## Pod Security Context (Best practices for AKS)
+# Uncomment and adjust based on your security requirements
+# podSecurityContext:
+#   runAsNonRoot: true
+#   runAsUser: 1000
+#   fsGroup: 1000
+#   seccompProfile:
+#     type: RuntimeDefault
+
+## Container Security Context
+# securityContext:
+#   allowPrivilegeEscalation: false
+#   readOnlyRootFilesystem: false
+#   capabilities:
+#     drop:
+#       - ALL
+
+## Node Selector (Optional: deploy to specific node pools)
+# nodeSelector:
+#   agentpool: netbird
+
+## Tolerations (Optional: for tainted nodes)
+# tolerations:
+#   - key: "workload"
+#     operator: "Equal"
+#     value: "netbird"
+#     effect: "NoSchedule"
+
+## Affinity (spread pods across nodes for HA)
+# affinity:
+#   podAntiAffinity:
+#     preferredDuringSchedulingIgnoredDuringExecution:
+#       - weight: 100
+#         podAffinityTerm:
+#           labelSelector:
+#             matchExpressions:
+#               - key: app.kubernetes.io/name
+#                 operator: In
+#                 values:
+#                   - netbird
+#           topologyKey: kubernetes.io/hostname
+
+## Metrics (Prometheus integration)
+metrics:
+  serviceMonitor:
+    enabled: false  # Set to true if using Prometheus Operator
+    interval: 30s
+    scrapeTimeout: 10s
+
+---
+# IMPORTANT: Create these secrets before deploying:
+#
+# 1. Microsoft Entra Authentication Secret:
+# kubectl create secret generic netbird-auth-entra \
+#   --from-literal=client-id='YOUR_CLIENT_ID' \
+#   --from-literal=client-secret='YOUR_CLIENT_SECRET' \
+#   -n netbird
+#
+# 2. Relay Secret (generate a secure random string):
+# kubectl create secret generic netbird-relay-secret \
+#   --from-literal=relay-secret='YOUR_SECURE_RELAY_SECRET' \
+#   -n netbird
+#
+# To generate a secure relay secret:
+# openssl rand -base64 32
