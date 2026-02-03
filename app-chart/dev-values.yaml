@@ -1,0 +1,803 @@
+##############################################################################
+# NetBird Production Deployment for AKS with NGINX Ingress
+# Domain: netbird.redzapp.net
+# Authentication: Microsoft Entra ID
+##############################################################################
+
+## @section Global Configuration
+global:
+  namespace: "netbird"
+
+nameOverride: ""
+fullnameOverride: ""
+
+##############################################################################
+## @section NetBird Management Service
+##############################################################################
+management:
+  enabled: true
+  replicaCount: 2  # Increased for production HA
+
+  ## Management pod command arguments
+  podCommand:
+    args:
+      - --port=80
+      - --log-file=console
+      - --log-level=info
+      - --disable-anonymous-metrics=false
+      - --single-account-mode-domain=netbird.redzapp.net
+      - --dns-domain=netbird.redzapp.net
+
+  ## Management ConfigMap - leave as placeholder
+  configmap: |-
+    # Placeholder for ConfigMap data
+
+  lifecycle: {}
+
+  ## Environment variables for Microsoft Entra ID authentication
+  env: {}
+
+  envRaw:
+    # Microsoft Entra ID Configuration
+    - name: NETBIRD_IDP
+      value: "azure"
+    
+    - name: NETBIRD_TENANT_ID
+      valueFrom:
+        secretKeyRef:
+          name: netbird-entra-secret
+          key: tenant-id
+    
+    - name: NETBIRD_AUTH_CLIENT_ID
+      valueFrom:
+        secretKeyRef:
+          name: netbird-entra-secret
+          key: client-id
+    
+    - name: NETBIRD_AUTH_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: netbird-entra-secret
+          key: client-secret
+    
+    - name: NETBIRD_AUTH_AUDIENCE
+      valueFrom:
+        secretKeyRef:
+          name: netbird-entra-secret
+          key: client-id
+    
+    - name: NETBIRD_AUTH_AUTHORITY
+      value: "https://login.microsoftonline.com/$(NETBIRD_TENANT_ID)"
+    
+    - name: NETBIRD_AUTH_SUPPORTED_SCOPES
+      value: "openid profile email offline_access api://$(NETBIRD_AUTH_CLIENT_ID)/api"
+    
+    - name: NETBIRD_AUTH_REDIRECT_URL
+      value: "https://netbird.redzapp.net"
+    
+    - name: NETBIRD_AUTH_SILENT_REDIRECT_URL
+      value: "https://netbird.redzapp.net/silent-auth"
+    
+    - name: NETBIRD_AUTH_DEVICE_AUTH_ENDPOINT
+      value: "https://login.microsoftonline.com/$(NETBIRD_TENANT_ID)/oauth2/v2.0/devicecode"
+    
+    - name: NETBIRD_AUTH_TOKEN_ENDPOINT
+      value: "https://login.microsoftonline.com/$(NETBIRD_TENANT_ID)/oauth2/v2.0/token"
+    
+    - name: NETBIRD_AUTH_AUTHORIZATION_ENDPOINT
+      value: "https://login.microsoftonline.com/$(NETBIRD_TENANT_ID)/oauth2/v2.0/authorize"
+    
+    - name: NETBIRD_AUTH_JWKS_ENDPOINT
+      value: "https://login.microsoftonline.com/$(NETBIRD_TENANT_ID)/discovery/v2.0/keys"
+    
+    - name: NETBIRD_AUTH_ISSUER
+      value: "https://login.microsoftonline.com/$(NETBIRD_TENANT_ID)/v2.0"
+    
+    - name: NETBIRD_AUTH_USER_ID_CLAIM
+      value: "oid"
+    
+    # Storage Configuration
+    - name: NETBIRD_STORE_ENGINE
+      value: "sqlite"
+    
+    - name: NETBIRD_DATADIR
+      value: "/var/lib/netbird"
+
+  envFromSecret: {}
+
+  ## Docker image configuration
+  image:
+    repository: netbirdio/management
+    pullPolicy: IfNotPresent
+    tag: ""
+
+  imagePullSecrets: []
+
+  ## Service Account
+  serviceAccount:
+    create: true
+    annotations: {}
+    name: ""
+
+  ## Deployment and Pod annotations
+  deploymentAnnotations: {}
+  
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+
+  ## Security contexts
+  podSecurityContext: {}
+
+  securityContext: {}
+
+  ## Use backwards compatible GRPC service
+  useBackwardsGrpcService: false
+
+  ## Metrics configuration
+  metrics:
+    enabled: true
+    port: 9090
+
+  ## Container port
+  containerPort: 80
+
+  ## HTTP Service configuration
+  service:
+    type: ClusterIP
+    port: 80
+    name: http
+    externalIPs: []
+    annotations: {}
+
+  ## gRPC Container port
+  grpcContainerPort: 33073
+
+  ## gRPC Service configuration
+  serviceGrpc:
+    type: ClusterIP  # Changed from LoadBalancer - NGINX supports gRPC natively
+    port: 33073
+    name: grpc
+    externalIPs: []
+    annotations: {}
+
+  ## HTTP Ingress - DISABLED (using consolidated ingress below)
+  ingress:
+    enabled: false
+
+  ## gRPC Ingress - DISABLED (using consolidated ingress below)
+  ingressGrpc:
+    enabled: false
+
+  ## Resource limits and requests
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  ## Node selector
+  nodeSelector: {}
+
+  ## Tolerations
+  tolerations: []
+
+  ## Affinity rules for high availability
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - management
+            topologyKey: kubernetes.io/hostname
+
+  ## Persistent Volume for data storage
+  persistentVolume:
+    enabled: true
+    accessModes:
+      - ReadWriteOnce
+    size: 10Gi
+    storageClass: "default2"
+    existingPVName: ""
+
+  ## Health probes
+  livenessProbe:
+    failureThreshold: 3
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    tcpSocket:
+      port: http
+
+  readinessProbe:
+    failureThreshold: 3
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    tcpSocket:
+      port: http
+
+  ## Volume mounts and volumes
+  volumeMounts: []
+  volumes: []
+
+##############################################################################
+## @section NetBird Signal Service
+##############################################################################
+signal:
+  enabled: true
+  replicaCount: 2
+  logLevel: info
+
+  ## Docker image
+  image:
+    repository: netbirdio/signal
+    pullPolicy: IfNotPresent
+    tag: ""
+
+  imagePullSecrets: []
+
+  ## Service Account
+  serviceAccount:
+    create: true
+    annotations: {}
+    name: ""
+
+  ## Annotations
+  deploymentAnnotations: {}
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+
+  ## Security contexts
+  podSecurityContext: {}
+
+  securityContext: {}
+
+  ## Metrics
+  metrics:
+    enabled: true
+    port: 9090
+
+  ## Container port
+  containerPort: 80
+
+  ## Service configuration - Changed to ClusterIP for NGINX
+  service:
+    type: ClusterIP
+    port: 80
+    name: grpc
+    externalIPs: []
+    annotations: {}
+
+  ## Ingress - DISABLED (using consolidated ingress)
+  ingress:
+    enabled: false
+
+  ## Resources
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+  ## Node selector
+  nodeSelector: {}
+
+  ## Tolerations
+  tolerations: []
+
+  ## Affinity
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - signal
+            topologyKey: kubernetes.io/hostname
+
+  ## Health probes
+  livenessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    tcpSocket:
+      port: grpc
+
+  readinessProbe:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    tcpSocket:
+      port: grpc
+
+  volumeMounts: []
+  volumes: []
+
+##############################################################################
+## @section NetBird Relay Service
+##############################################################################
+relay:
+  enabled: true
+  replicaCount: 2
+  logLevel: info
+
+  env: {}
+  envRaw: []
+  envFromSecret: {}
+
+  ## Docker image
+  image:
+    repository: netbirdio/relay
+    pullPolicy: IfNotPresent
+    tag: ""
+
+  imagePullSecrets: []
+
+  ## Service Account
+  serviceAccount:
+    create: true
+    annotations: {}
+    name: ""
+
+  ## Annotations
+  deploymentAnnotations: {}
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+
+  ## Security contexts
+  podSecurityContext: {}
+
+  securityContext: {}
+
+  ## Metrics
+  metrics:
+    enabled: true
+    port: 9090
+
+  ## Container port
+  containerPort: 33080
+
+  ## Service
+  service:
+    type: ClusterIP
+    port: 33080
+    name: http
+    externalIPs: []
+    annotations: {}
+
+  ## Ingress - DISABLED (using consolidated ingress)
+  ingress:
+    enabled: false
+
+  ## Resources
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  ## Node selector
+  nodeSelector: {}
+
+  ## Tolerations
+  tolerations: []
+
+  ## Affinity
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - relay
+            topologyKey: kubernetes.io/hostname
+
+  ## Health probes
+  livenessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    tcpSocket:
+      port: http
+
+  readinessProbe:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    tcpSocket:
+      port: http
+
+  volumeMounts: []
+  volumes: []
+
+##############################################################################
+## @section NetBird Dashboard
+##############################################################################
+dashboard:
+  enabled: true
+  replicaCount: 2
+
+  ## Dashboard command
+  podCommand:
+    args: []
+
+  ## Docker image
+  image:
+    repository: netbirdio/dashboard
+    pullPolicy: IfNotPresent
+    tag: "latest"
+
+  imagePullSecrets: []
+
+  ## Service Account
+  serviceAccount:
+    create: true
+    annotations: {}
+    name: ""
+
+  ## Annotations
+  podAnnotations: {}
+
+  ## Security contexts
+  podSecurityContext: {}
+
+  securityContext: {}
+
+  ## Container port
+  containerPort: 80
+
+  ## Service
+  service:
+    type: ClusterIP
+    port: 80
+    name: http
+    externalIPs: []
+    annotations: {}
+
+  ## Ingress - DISABLED (using consolidated ingress)
+  ingress:
+    enabled: false
+
+  ## Resources
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  ## Node selector
+  nodeSelector: {}
+
+  ## Tolerations
+  tolerations: []
+
+  ## Affinity
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - dashboard
+            topologyKey: kubernetes.io/hostname
+
+  ## Environment variables for dashboard
+  env: {}
+
+  envRaw:
+    - name: NETBIRD_TENANT_ID
+      valueFrom:
+        secretKeyRef:
+          name: netbird-entra-secret
+          key: tenant-id
+    
+    - name: AUTH_CLIENT_ID
+      valueFrom:
+        secretKeyRef:
+          name: netbird-entra-secret
+          key: client-id
+    
+    - name: AUTH_AUDIENCE
+      valueFrom:
+        secretKeyRef:
+          name: netbird-entra-secret
+          key: client-id
+    
+    - name: AUTH_AUTHORITY
+      value: "https://login.microsoftonline.com/$(NETBIRD_TENANT_ID)"
+    
+    - name: USE_AUTH0
+      value: "false"
+    
+    - name: AUTH_SUPPORTED_SCOPES
+      value: "openid profile email offline_access api://$(AUTH_CLIENT_ID)/api"
+    
+    - name: AUTH_REDIRECT_URI
+      value: "https://netbird.redzapp.net/auth"
+    
+    - name: AUTH_SILENT_REDIRECT_URI
+      value: "https://netbird.redzapp.net/silent-auth"
+    
+    - name: NETBIRD_MGMT_API_ENDPOINT
+      value: "https://netbird.redzapp.net"
+    
+    - name: NETBIRD_MGMT_GRPC_API_ENDPOINT
+      value: "https://netbird.redzapp.net"
+    
+    - name: NETBIRD_HOTJAR_TRACK_ID
+      value: ""
+    
+    - name: NETBIRD_GOOGLE_ANALYTICS_ID
+      value: ""
+
+  envFromSecret: {}
+
+  lifecycle: {}
+
+  ## Health probes
+  livenessProbe:
+    periodSeconds: 10
+    httpGet:
+      path: /
+      port: http
+
+  readinessProbe:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    httpGet:
+      path: /
+      port: http
+
+  volumeMounts: []
+  volumes: []
+
+##############################################################################
+## @section Let's Encrypt Issuer
+##############################################################################
+issuer:
+  production:
+    create: true
+    email: "i.ajaj@homyt.net"
+
+##############################################################################
+## @section Extra Manifests - Consolidated Ingress for NGINX
+##############################################################################
+extraManifests:
+  # Main HTTP/HTTPS Ingress
+  - apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: netbird-http
+      namespace: netbird
+      annotations:
+        # cert-manager configuration
+        cert-manager.io/cluster-issuer: "letsencrypt-prod"
+        
+        # NGINX specific annotations
+        nginx.ingress.kubernetes.io/ssl-redirect: "true"
+        nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+        nginx.ingress.kubernetes.io/proxy-body-size: "0"
+        nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+        nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+        
+        # CORS if needed
+        nginx.ingress.kubernetes.io/enable-cors: "true"
+        nginx.ingress.kubernetes.io/cors-allow-origin: "https://netbird.redzapp.net"
+    spec:
+      ingressClassName: nginx
+      tls:
+      - hosts:
+        - netbird.redzapp.net
+        secretName: netbird-http-tls
+      rules:
+      - host: netbird.redzapp.net
+        http:
+          paths:
+          # Management API endpoints (highest priority)
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: netbird-management
+                port:
+                  number: 80
+          
+          # Relay service
+          - path: /relay
+            pathType: Prefix
+            backend:
+              service:
+                name: netbird-relay
+                port:
+                  number: 33080
+          
+          # Authentication callback paths
+          - path: /auth
+            pathType: Prefix
+            backend:
+              service:
+                name: netbird-dashboard
+                port:
+                  number: 80
+          
+          - path: /silent-auth
+            pathType: Prefix
+            backend:
+              service:
+                name: netbird-dashboard
+                port:
+                  number: 80
+          
+          # Dashboard static assets
+          - path: /static
+            pathType: Prefix
+            backend:
+              service:
+                name: netbird-dashboard
+                port:
+                  number: 80
+          
+          - path: /assets
+            pathType: Prefix
+            backend:
+              service:
+                name: netbird-dashboard
+                port:
+                  number: 80
+          
+          # Dashboard root (catch-all - MUST be last)
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: netbird-dashboard
+                port:
+                  number: 80
+
+  # gRPC Ingress for Management Service
+  - apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: netbird-grpc-management
+      namespace: netbird
+      annotations:
+        cert-manager.io/cluster-issuer: "letsencrypt-prod"
+        nginx.ingress.kubernetes.io/ssl-redirect: "true"
+        nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+        nginx.ingress.kubernetes.io/grpc-backend: "true"
+    spec:
+      ingressClassName: nginx
+      tls:
+      - hosts:
+        - netbird.redzapp.net
+        secretName: netbird-grpc-management-tls
+      rules:
+      - host: netbird.redzapp.net
+        http:
+          paths:
+          - path: /management.ManagementService
+            pathType: Prefix
+            backend:
+              service:
+                name: netbird-management-grpc
+                port:
+                  number: 33073
+
+  # gRPC Ingress for Signal Service
+  - apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: netbird-grpc-signal
+      namespace: netbird
+      annotations:
+        cert-manager.io/cluster-issuer: "letsencrypt-prod"
+        nginx.ingress.kubernetes.io/ssl-redirect: "true"
+        nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+        nginx.ingress.kubernetes.io/grpc-backend: "true"
+    spec:
+      ingressClassName: nginx
+      tls:
+      - hosts:
+        - netbird.redzapp.net
+        secretName: netbird-grpc-signal-tls
+      rules:
+      - host: netbird.redzapp.net
+        http:
+          paths:
+          - path: /signalexchange.SignalExchange
+            pathType: Prefix
+            backend:
+              service:
+                name: netbird-signal
+                port:
+                  number: 80
+
+  # Pod Disruption Budgets for High Availability
+  - apiVersion: policy/v1
+    kind: PodDisruptionBudget
+    metadata:
+      name: netbird-management-pdb
+      namespace: netbird
+    spec:
+      minAvailable: 1
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: netbird
+          app.kubernetes.io/component: management
+
+  - apiVersion: policy/v1
+    kind: PodDisruptionBudget
+    metadata:
+      name: netbird-signal-pdb
+      namespace: netbird
+    spec:
+      minAvailable: 1
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: netbird
+          app.kubernetes.io/component: signal
+
+  - apiVersion: policy/v1
+    kind: PodDisruptionBudget
+    metadata:
+      name: netbird-relay-pdb
+      namespace: netbird
+    spec:
+      minAvailable: 1
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: netbird
+          app.kubernetes.io/component: relay
+
+  - apiVersion: policy/v1
+    kind: PodDisruptionBudget
+    metadata:
+      name: netbird-dashboard-pdb
+      namespace: netbird
+    spec:
+      minAvailable: 1
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: netbird
+          app.kubernetes.io/component: dashboard
+
+##############################################################################
+## @section Prometheus Metrics
+##############################################################################
+metrics:
+  serviceMonitor:
+    enabled: false
+    namespace: "netbird"
+    annotations: {}
+    labels: {}
+    jobLabel: ""
+    honorLabels: false
+    interval: "30s"
+    scrapeTimeout: "10s"
+    metricRelabelings: []
+    relabelings: []
+    selector: {}

@@ -1,0 +1,33 @@
+import net.homyt.jenkins.model.*;
+import net.homyt.jenkins.service.Pipeline;
+import net.homyt.jenkins.service.*;
+
+Project project = Redz.getInstance(this, serviceName="netbird")
+PipelineClosureProvider provider = PipelineClosureProvider.getInstance(this, project);
+Pipeline pipeline = Pipeline.getInstance(this);
+
+def namespace = "netbird"
+
+pipeline.addMasterStages([
+    provider.getRepoCheckoutStage(
+        branchName: project.getDevOpsBranch(),
+        gitUrlCode: project.getDevOpsRepo(),
+        extensions: [['$class': 'RelativeTargetDirectory', relativeTargetDir: 'devops']],
+    ),
+    // provider.getHelmInstallStage(
+    //     serviceName: "${project.getServiceName()}-helpers",
+    //     namespace: namespace,
+    //     helmType: "helpers",
+    // ),
+    provider.getHelmAddRepoStage(
+        repoName: "netbirdio",
+        repoUrl: "https://netbirdio.github.io/helms",
+    ),
+    provider.getHelmInstallStage(
+        namespace: namespace,
+        version  : "1.9.0",
+        repoName : "netbirdio/netbird",
+    ),
+])
+
+pipeline.build()
