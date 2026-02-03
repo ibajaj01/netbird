@@ -16,7 +16,7 @@ fullnameOverride: ""
 ##############################################################################
 management:
   enabled: true
-  replicaCount: 2  # Increased for production HA
+  replicaCount: 1  # Increased for production HA
 
   ## Management pod command arguments
   podCommand:
@@ -30,7 +30,70 @@ management:
 
   ## Management ConfigMap - leave as placeholder
   configmap: |-
-    # Placeholder for ConfigMap data
+    {
+      "Stuns": [
+        {
+          "Proto": "udp",
+          "URI": "stun:stun.netbird.io:3478",
+          "Username": "",
+          "Password": null
+        }
+      ],
+      "TURNConfig": {
+        "Turns": [
+          {
+            "Proto": "udp",
+            "URI": "turn:turn.netbird.io:3478",
+            "Username": "self",
+            "Password": "self"
+          }
+        ],
+        "CredentialsTTL": "12h",
+        "Secret": "secret",
+        "TimeBasedCredentials": false
+      },
+      "Signal": {
+        "Proto": "https",
+        "URI": "netbird.redzapp.net:443",
+        "Username": "",
+        "Password": null
+      },
+      "Datadir": "/var/lib/netbird",
+      "DataStoreEncryptionKey": "",
+      "HttpConfig": {
+        "AuthIssuer": "",
+        "AuthAudience": "",
+        "AuthKeysLocation": "",
+        "OIDCConfigEndpoint": "",
+        "IdpSignKeyRefreshEnabled": false
+      },
+      "DeviceAuthorizationFlow": {
+        "Provider": "none",
+        "ProviderConfig": {
+          "Audience": "",
+          "ClientID": "",
+          "ClientSecret": "",
+          "TokenEndpoint": "",
+          "DeviceAuthEndpoint": "",
+          "AuthorizationEndpoint": "",
+          "Scope": "",
+          "UseIDToken": false,
+          "RedirectURLs": null
+        }
+      },
+      "PKCEAuthorizationFlow": {
+        "ProviderConfig": {
+          "Audience": "",
+          "ClientID": "",
+          "ClientSecret": "",
+          "TokenEndpoint": "",
+          "AuthorizationEndpoint": "",
+          "Scope": "",
+          "RedirectURLs": null,
+          "UseIDToken": false
+        }
+      }
+    }
 
   lifecycle: {}
 
@@ -178,26 +241,6 @@ management:
       cpu: 1000m
       memory: 1Gi
 
-  ## Node selector
-  nodeSelector: {}
-
-  ## Tolerations
-  tolerations: []
-
-  ## Affinity rules for high availability
-  affinity:
-    podAntiAffinity:
-      preferredDuringSchedulingIgnoredDuringExecution:
-        - weight: 100
-          podAffinityTerm:
-            labelSelector:
-              matchExpressions:
-                - key: app.kubernetes.io/component
-                  operator: In
-                  values:
-                    - management
-            topologyKey: kubernetes.io/hostname
-
   ## Persistent Volume for data storage
   persistentVolume:
     enabled: true
@@ -233,7 +276,7 @@ management:
 ##############################################################################
 signal:
   enabled: true
-  replicaCount: 2
+  replicaCount: 1
   logLevel: info
 
   ## Docker image
@@ -290,26 +333,6 @@ signal:
       cpu: 250m
       memory: 256Mi
 
-  ## Node selector
-  nodeSelector: {}
-
-  ## Tolerations
-  tolerations: []
-
-  ## Affinity
-  affinity:
-    podAntiAffinity:
-      preferredDuringSchedulingIgnoredDuringExecution:
-        - weight: 100
-          podAffinityTerm:
-            labelSelector:
-              matchExpressions:
-                - key: app.kubernetes.io/component
-                  operator: In
-                  values:
-                    - signal
-            topologyKey: kubernetes.io/hostname
-
   ## Health probes
   livenessProbe:
     initialDelaySeconds: 10
@@ -331,11 +354,17 @@ signal:
 ##############################################################################
 relay:
   enabled: true
-  replicaCount: 2
+  replicaCount: 1
   logLevel: info
 
   env: {}
-  envRaw: []
+  envRaw:
+    # REQUIRED: Relay exposed address - this is how peers will reach the relay
+    - name: NB_EXPOSED_ADDRESS
+      value: "rels://netbird.redzapp.net:443"  # or use relay subdomain if you create one
+    - name: NB_LISTEN_ADDRESS
+      value: ":33080"
+
   envFromSecret: {}
 
   ## Docker image
@@ -392,26 +421,6 @@ relay:
       cpu: 500m
       memory: 512Mi
 
-  ## Node selector
-  nodeSelector: {}
-
-  ## Tolerations
-  tolerations: []
-
-  ## Affinity
-  affinity:
-    podAntiAffinity:
-      preferredDuringSchedulingIgnoredDuringExecution:
-        - weight: 100
-          podAffinityTerm:
-            labelSelector:
-              matchExpressions:
-                - key: app.kubernetes.io/component
-                  operator: In
-                  values:
-                    - relay
-            topologyKey: kubernetes.io/hostname
-
   ## Health probes
   livenessProbe:
     initialDelaySeconds: 10
@@ -433,7 +442,7 @@ relay:
 ##############################################################################
 dashboard:
   enabled: true
-  replicaCount: 2
+  replicaCount: 1
 
   ## Dashboard command
   podCommand:
