@@ -1,4 +1,4 @@
-{{- if and .Values.management.enabled .Values.management.configmap (ne .Values.management.configmap "") -}}
+{{- if .Values.management.enabled -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
