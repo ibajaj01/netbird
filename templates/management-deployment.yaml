@@ -92,6 +92,8 @@ spec:
           resources:
             {{- toYaml .Values.management.resources | nindent 12 }}
           volumeMounts:
+            - mountPath: /etc/netbird
+              name: config
             - mountPath: /var/lib/netbird
               name: management
           {{- if .Values.management.volumeMounts }}
@@ -110,6 +112,9 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       volumes:
+        - name: config
+          configMap:
+            name: {{ include "netbird.fullname" . }}-management
         - name: management
           {{- if .Values.management.persistentVolume.enabled }}
           persistentVolumeClaim:
@@ -117,7 +122,7 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
-        {{- if  .Values.management.volumes }}
-        {{- .Values.management.volumes | toYaml | nindent 8 }}
-        {{- end }}
+          {{- if  .Values.management.volumes }}
+          {{- .Values.management.volumes | toYaml | nindent 8 }}
+          {{- end }}
 {{- end -}}
