@@ -27,9 +27,68 @@ management:
       - --disable-anonymous-metrics=false
       - --single-account-mode-domain=netbird.redzapp.net
       - --dns-domain=netbird.redzapp.net
+      - --config=/var/lib/netbird/management.json
 
   ## Management ConfigMap - leave as placeholder
-  configmap: ""
+  configmap: |
+    {
+      "Stuns": [
+        {
+          "Proto": "udp",
+          "URI": "stun:stun.l.google.com:19302",
+          "Username": "",
+          "Password": null
+        }
+      ],
+      "TURNConfig": {
+        "Turns": [],
+        "CredentialsTTL": "12h0m0s",
+        "Secret": "netbird-turn-secret",
+        "TimeBasedCredentials": false
+      },
+      "Signal": {
+        "Proto": "https",
+        "URI": "netbird.redzapp.net:443",
+        "Username": "",
+        "Password": null
+      },
+      "Datadir": "/var/lib/netbird",
+      "DataStoreEncryptionKey": "",
+      "HttpConfig": {
+        "Address": "0.0.0.0:80",
+        "AuthIssuer": "https://login.microsoftonline.com/659797b6-8e8d-4b80-bca0-867f365f83b0/v2.0",
+        "AuthAudience": "be388de1-4ca4-4c34-b9aa-76848bd01844",
+        "AuthKeysLocation": "",
+        "OIDCConfigEndpoint": "https://login.microsoftonline.com/659797b6-8e8d-4b80-bca0-867f365f83b0/v2.0/.well-known/openid-configuration",
+        "IdpSignKeyRefreshEnabled": true
+      },
+      "DeviceAuthorizationFlow": {
+        "Provider": "azure",
+        "ProviderConfig": {
+          "Audience": "be388de1-4ca4-4c34-b9aa-76848bd01844",
+          "ClientID": "be388de1-4ca4-4c34-b9aa-76848bd01844",
+          "ClientSecret": "",
+          "TokenEndpoint": "https://login.microsoftonline.com/659797b6-8e8d-4b80-bca0-867f365f83b0/oauth2/v2.0/token",
+          "DeviceAuthEndpoint": "https://login.microsoftonline.com/659797b6-8e8d-4b80-bca0-867f365f83b0/oauth2/v2.0/devicecode",
+          "AuthorizationEndpoint": "https://login.microsoftonline.com/659797b6-8e8d-4b80-bca0-867f365f83b0/oauth2/v2.0/authorize",
+          "Scope": "openid profile email offline_access api://be388de1-4ca4-4c34-b9aa-76848bd01844/api",
+          "UseIDToken": false,
+          "RedirectURLs": null
+        }
+      },
+      "PKCEAuthorizationFlow": {
+        "ProviderConfig": {
+          "Audience": "be388de1-4ca4-4c34-b9aa-76848bd01844",
+          "ClientID": "be388de1-4ca4-4c34-b9aa-76848bd01844",
+          "ClientSecret": "",
+          "TokenEndpoint": "https://login.microsoftonline.com/659797b6-8e8d-4b80-bca0-867f365f83b0/oauth2/v2.0/token",
+          "AuthorizationEndpoint": "https://login.microsoftonline.com/659797b6-8e8d-4b80-bca0-867f365f83b0/oauth2/v2.0/authorize",
+          "Scope": "openid profile email offline_access api://be388de1-4ca4-4c34-b9aa-76848bd01844/api",
+          "RedirectURLs": ["https://netbird.redzapp.net"],
+          "UseIDToken": false
+        }
+      }
+    }
 
   lifecycle: {}
 
